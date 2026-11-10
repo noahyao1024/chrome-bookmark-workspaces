@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Bookmark Workspaces",
+  "version": "0.1.0",
+  "description": "Search and reuse bookmarked pages with Alfred; group Work and Personal tabs without duplicates.",
+  "permissions": [
+    "bookmarks",
+    "tabs",
+    "tabGroups",
+    "nativeMessaging",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.mjs",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "按 Work / Personal 书签整理当前窗口",
+    "default_icon": {
+      "128": "icon.png"
+    }
+  },
+  "commands": {
+    "switch-last-tab": {
+      "description": "切回上一个使用的标签（最近两页往返）"
+    }
+  },
+  "minimum_chrome_version": "121",
+  "icons": {
+    "128": "icon.png"
+  }
+}

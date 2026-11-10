@@ -1,0 +1,11 @@
+{
+  "name": "chrome-bookmark-workspaces",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bookmark aliases, tab reuse and automatic tab groups for Chrome and Alfred",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test *.test.js bookmark-groups-extension/*.test.mjs"
+  },
+  "engines": {"node": ">=20"}
+}

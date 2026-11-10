@@ -1,0 +1,248 @@
+/* Pure search/action logic; shared by the macOS adapter and Node tests. */
+var BookmarkWorkspaces = (function () {
+  "use strict";
+  function normalized(value) {
+    return String(value || "").normalize("NFKC").replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, "").toLowerCase();
+  }
+  function decoded(value) {
+    try { return decodeURIComponent(value); } catch (_) { return value; }
+  }
+  function queryValue(url, key) {
+    var query = url.split("?")[1];
+    if (!query) return "";
+    var pairs = query.split("#")[0].split("&");
+    for (var i = 0; i < pairs.length; i++) {
+      var parts = pairs[i].split("=");
+      if (decoded(parts.shift()) === key) return decoded(parts.join("=").replace(/\+/g, " "));
+    }
+    return "";
+  }
+  function dashboardKey(url) {
+    // Discovery only: a Grafana dashboard keeps its UID when variables change.
+    // Do not generalize this rule to services with IDs in query parameters.
+    var parts = /^(https?):\/\/([^/?#]+)\/d\/([^/?#]+)(?:[/?#]|$)/i.exec(url);
+    if (!parts || !/^grafana(?:[.-]|$)/i.test(parts[2])) return null;
+    return parts[1].toLowerCase() + "://" + parts[2].toLowerCase() + "/d/" + parts[3] + "?orgId=" + queryValue(url, "orgId");
+  }
+  function gmailAccount(url, inboxOnly) {
+    // Only an explicit account's mailbox entry may reuse a different Gmail view.
+    // Message links, account selectors and query parameters remain significant.
+    var parts = /^https:\/\/mail\.google\.com\/mail\/u\/(\d+)\/(?:#(.*))?$/.exec(url);
+    if (!parts || (inboxOnly && parts[2] && parts[2] !== "inbox")) return null;
+    return parts[1];
+  }
+  function flatten(document) {
+    var result = [];
+    function visit(node, parents) {
+      if (node.type === "url") {
+        // Work/Personal already identify the category; omit Chrome's root label.
+        var path = parents.length > 1 && /^(work|personal)$/i.test(parents[1]) ? parents.slice(1) : parents;
+        result.push({ title: node.name, url: node.url, path: path.join(" / "), id: node.id });
+      } else {
+        (node.children || []).forEach(function (child) { visit(child, parents.concat(node.name || [])); });
+      }
+    }
+    Object.keys(document.roots || {}).forEach(function (key) { visit(document.roots[key], []); });
+    return result;
+  }
+  function rank(text, query, tokens) {
+    text = normalized(text);
+    if (!query) return 3;
+    if (text === query) return 0;
+    if (text.indexOf(query) === 0) return 1;
+    if (tokens.every(function (token) { return text.indexOf(token) >= 0; })) return 2;
+    return 4;
+  }
+  function addSearchAliases(bookmarks, aliases) {
+    var result = bookmarks.slice();
+    (Array.isArray(aliases) ? aliases : []).forEach(function (alias) {
+      if (!alias || typeof alias.url !== "string" || typeof alias.title !== "string" || !alias.title.trim()) return;
+      var saved = bookmarks.find(function (b) { return b.url === alias.url; });
+      // An alias only augments a bookmark that still exists at the same full URL.
+      if (!saved || result.some(function (b) { return b.url === alias.url && normalized(b.title).trim() === normalized(alias.title).trim(); })) return;
+      result.push(Object.assign({}, saved, {title: alias.title}));
+    });
+    return result;
+  }
+  function archivedBookmark(bookmark) {
+    return /(?:^| \/ )(?:archive|archived)(?: \/ |$)/i.test(bookmark.path || "");
+  }
+  function urlParts(value) {
+    var match = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)/i.exec(value);
+    if (!match) return {origin: "", path: "", plain: value.split("#")[0]};
+    // Context labels never expose credentials or arbitrary query/fragment data.
+    return {origin: match[1].toLowerCase() + "://" + match[2].replace(/^.*@/, ""),
+      path: match[3] || "/", plain: value.split("#")[0]};
+  }
+  function collisionContext(url, peers) {
+    var parsed = peers.map(urlParts);
+    function different(key) {
+      var values = parsed.map(function (p) { return queryValue(p.plain, key); });
+      return values.some(function (value) { return value !== values[0]; });
+    }
+    function describe(value) {
+      var part = urlParts(value), labels = [];
+      function add(value) { if (value) labels.push(String(value).replace(/\s+/g, " ").slice(0, 90)); }
+      var regionKey = ["zone", "region", "var-VRegion", "var-region", "regionList"].find(different);
+      if (regionKey) add(queryValue(part.plain, regionKey) || "区域未指定");
+      var viewKey = ["mode", "module", "tab"].find(different);
+      if (viewKey) {
+        var view = queryValue(part.plain, viewKey);
+        var views = {Egress: "出站", Ingress: "入站", cluster: "集群视图", instance: "实例视图",
+          service_overview: "服务概览", service_upstream: "上游服务", service_downstream: "下游服务"};
+        add(Object.prototype.hasOwnProperty.call(views, view) ? views[view] : (view ? "视图 " + view : "视图未指定"));
+      }
+      var clusterKey = ["service_cluster", "var-cluster"].find(different);
+      if (clusterKey) add("集群 " + (queryValue(part.plain, clusterKey) || "未指定"));
+      var sourceKey = ["var-datasource", "var-bosun_datasource"].find(different);
+      if (sourceKey) add("数据源 " + (queryValue(part.plain, sourceKey) || "未指定"));
+      if (parsed.some(function (p) { return p.path !== parsed[0].path; })) {
+        if (/\/commits(?:\/|$)/.test(part.path)) add("提交记录");
+        else if (parsed.some(function (p) { return p.path.indexOf(part.path.replace(/\/$/, "") + "/commits/") === 0; })) add("仓库首页");
+        else if (/\/serviceList\/fav\/?$/.test(part.path)) add("收藏服务");
+        else if (/\/serviceList\/?$/.test(part.path)) add("全部服务");
+        else if (/\/feature_engineering\/extract_feature\/?$/.test(part.path)) add("特征提取");
+        else if (/\/feature_engineering\/original_feature\/?$/.test(part.path)) add("原始特征");
+        else add("路径 " + part.path);
+      }
+      if (!labels.length && parsed.some(function (p) { return p.origin !== parsed[0].origin; })) add(part.origin);
+      return labels.slice(0, 3).join(" · ");
+    }
+    var label = describe(url);
+    if (!label || peers.filter(function (peer) { return describe(peer) === label; }).length > 1) {
+      var position = peers.indexOf(url);
+      label += (label ? " · " : "") + (position < 0 ? "当前视图" : "保存视图 " + (position + 1));
+    }
+    return label;
+  }
+  function items(bookmarks, tabs, query, tabsKnown, options) {
+    options = options || {};
+    query = normalized(query).trim();
+    var tokens = query.split(/\s+/).filter(Boolean), groups = new Map(), dashboards = new Map(), nameURLs = new Map();
+    function entry(url) {
+      if (!groups.has(url)) groups.set(url, { url: url, bookmarks: [], tabs: [], order: groups.size });
+      return groups.get(url);
+    }
+    bookmarks.forEach(function (b) {
+      if (!b.url) return;
+      entry(b.url).bookmarks.push(b);
+      var nameKey = normalized(b.title).trim();
+      if (nameKey) {
+        if (!nameURLs.has(nameKey)) nameURLs.set(nameKey, new Set());
+        nameURLs.get(nameKey).add(b.url);
+      }
+      var key = dashboardKey(b.url);
+      if (key) {
+        if (!dashboards.has(key)) dashboards.set(key, []);
+        dashboards.get(key).push(b);
+      }
+    });
+    tabs.forEach(function (t) { if (t.url) entry(t.url).tabs.push(t); });
+    var entryPolicies = options.entryPolicies || [], entryTargets = options.entryTargets || [];
+    var results = [];
+    groups.forEach(function (g) {
+      var links = entryTargets.filter(function (target) {
+        return target.url === g.url && target.entryURL === g.url && entryPolicies.some(function (p) { return p.id === target.entryId && p.url === target.entryURL; }) &&
+          bookmarks.some(function (b) { return b.url === target.entryURL; }) &&
+          g.tabs.some(function (t) { return String(t.tabId) === String(target.tabId) && String(t.windowId) === String(target.windowId); });
+      }).sort(function (a, b) { return Number(!!b.bound) - Number(!!a.bound); });
+      var link = links[0];
+      var related = g.tabs.length ? (dashboards.get(dashboardKey(g.url)) || []).filter(function (b) { return b.url !== g.url; }) : [];
+      var saved = g.bookmarks.concat(related);
+      var hasArchive = saved.some(archivedBookmark);
+      var archived = !g.tabs.length && saved.length > 0 && saved.every(archivedBookmark);
+      var searchable = normalized([decoded(g.url)].concat(
+        saved.map(function (b) { return b.title + " " + b.path; }),
+        g.tabs.map(function (t) { return t.title; })
+      ).join(" ") + (hasArchive ? " archive 归档" : ""));
+      var sorted = saved.slice().sort(function (a, b) { return rank(a.title, query, tokens) - rank(b.title, query, tokens); });
+      var bookmark = sorted[0], tab = link ? g.tabs.find(function (t) {
+        return String(t.tabId) === String(link.tabId) && String(t.windowId) === String(link.windowId);
+      }) : g.tabs[0];
+      var title = bookmark ? bookmark.title : (tab.title || g.url);
+      var payload = { version: 1, url: g.url };
+      if (tab) {
+        payload.windowId = tab.windowId; payload.tabId = tab.tabId;
+        if (Number.isSafeInteger(tab.tabIndex) && tab.tabIndex > 0) payload.tabIndex = tab.tabIndex;
+      }
+      var entryPolicy = link || (!tab && entryPolicies.find(function (p) { return p.url === g.url; }));
+      if (entryPolicy) {
+        payload.entryId = link ? link.entryId : entryPolicy.id;
+        payload.entryURL = link ? link.entryURL : entryPolicy.url;
+      }
+      var state = tab ? "已打开 · ↩ 切换" : (tabsKnown ? "书签 · ↩ 打开" : "书签 · 标签状态未读取");
+      var region = dashboardKey(g.url) ? queryValue(g.url, "var-VRegion") : "";
+      if (region) state += " · " + region;
+      var detail = bookmark ? bookmark.path : (tab.windowName || "Chrome");
+      var aliases = sorted.map(function (b) { return b.title; }).filter(function (name, i, all) { return all.indexOf(name) === i && name !== title; });
+      if (options.indexMode && aliases.length) title += " / " + aliases.join(" / ");
+      var collision = sorted.find(function (b) { var urls = nameURLs.get(normalized(b.title).trim()); return urls && urls.size > 1; });
+      var context = collision ? collisionContext(g.url, Array.from(nameURLs.get(normalized(collision.title).trim()))) : "";
+      searchable += context ? " " + normalized(context) : "";
+      if (!tokens.every(function (token) { return searchable.indexOf(token) >= 0; })) return;
+      var subtitle = state + (context ? " · " + context : "") + " · " + detail + (aliases.length ? " · 别名：" + aliases.join(" / ") : "");
+      if (link) subtitle += " · " + (tab.title || g.url);
+      results.push({
+        score: rank(title, query, tokens), archived: archived, opened: !!tab, entryBound: !!(link && link.bound), order: g.order,
+        item: { title: title, subtitle: subtitle, arg: JSON.stringify(payload), valid: true,
+          _entry: !!entryPolicy,
+          _archived: archived,
+          _source: tab ? (g.bookmarks.length ? "opened-bookmark" : (related.length ? "opened-related" : "opened")) : "bookmark",
+          _aliases: sorted.map(function (b) { return b.title; }),
+          match: searchable + " " + searchable.replace(/[./?&=#:_-]+/g, " "),
+          text: { copy: g.url, largetype: title + "\n" + g.url },
+          mods: {
+            cmd: { valid: true, subtitle: "另开一个标签", arg: JSON.stringify(Object.assign({}, payload, { forceNew: true })) },
+            ctrl: { valid: true, subtitle: "复制完整网址", arg: g.url }
+          }
+        }
+      });
+    });
+    // Entry aliases are separate actions from exact deep-link bookmarks, even
+    // when both currently point at the same live page.
+    var addedEntries = new Set();
+    entryTargets.slice().sort(function (a, b) { return Number(!!b.bound) - Number(!!a.bound); }).forEach(function (target) {
+      if (target.url === target.entryURL || !entryPolicies.some(function (p) { return p.id === target.entryId && p.url === target.entryURL; })) return;
+      var identity = JSON.stringify([target.entryId, target.url]);
+      if (addedEntries.has(identity)) return;
+      var tab = tabs.find(function (t) { return t.url === target.url && String(t.tabId) === String(target.tabId) && String(t.windowId) === String(target.windowId); });
+      var saved = bookmarks.filter(function (b) { return b.url === target.entryURL; });
+      if (!tab || !saved.length) return;
+      addedEntries.add(identity);
+      var virtual = saved.map(function (b) { return Object.assign({}, b, {url: target.url}); });
+      var rows = items(virtual, [tab], query, tabsKnown, {indexMode: !!options.indexMode});
+      rows.forEach(function (row) {
+        var payload = JSON.parse(row.arg);
+        payload.entryId = target.entryId;payload.entryURL = target.entryURL;
+        row.arg = JSON.stringify(payload);
+        row.mods.cmd.arg = JSON.stringify(Object.assign({}, payload, {forceNew: true}));
+        row._source = "opened-related";
+        row._entry = true;
+        row.subtitle += " · " + (tab.title || tab.url);
+        results.push({score: rank(row.title, query, tokens), opened: true, entryBound: !!target.bound,
+          order: groups.size + results.length, item: row});
+      });
+    });
+    results.sort(function (a, b) { return Number(!!a.archived) - Number(!!b.archived) || a.score - b.score || Number(b.opened) - Number(a.opened) || Number(b.entryBound) - Number(a.entryBound) || a.order - b.order; });
+    return (options.indexMode ? results : results.slice(0, 150)).map(function (r) { return r.item; });
+  }
+  function decide(payload, tabs, options) {
+    if (payload.version !== 1 || typeof payload.url !== "string" || !/^(https?|file|chrome|about):/i.test(payload.url)) {
+      throw new Error("不支持的网址格式");
+    }
+    if (!payload.forceNew) {
+      var matches = tabs.filter(function (t) { return t.url === payload.url; });
+      var selected = matches.find(function (t) { return String(t.tabId) === String(payload.tabId) && String(t.windowId) === String(payload.windowId); });
+      if (selected || matches[0]) return { kind: "focus", tab: selected || matches[0] };
+      // Only the extension can prove these tabs belong to the configured profile.
+      var account = options && options.allowMailboxReuse ? gmailAccount(payload.url, true) : null;
+      if (account !== null) {
+        var mailbox = tabs.find(function (t) { return gmailAccount(t.url, false) === account; });
+        if (mailbox) return { kind: "focus", tab: mailbox };
+      }
+    }
+    return { kind: "open", url: payload.url };
+  }
+  return { flatten: flatten, items: items, decide: decide, addSearchAliases: addSearchAliases };
+})();
+if (typeof module !== "undefined") module.exports = BookmarkWorkspaces;
