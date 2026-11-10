@@ -57,7 +57,8 @@ The public default contains no site-specific rules. Copy `config.example.json` t
       "scope": {
         "origin": "https://app.example.test",
         "pathPrefix": "/team/",
-        "queryKeys": ["issue"]
+        "queryKeys": "*",
+        "allowFragment": true
       }
     }
   ]
@@ -67,6 +68,11 @@ The public default contains no site-specific rules. Copy `config.example.json` t
 `url` must equal an existing bookmark's complete URL. A matching bookmark becomes a workspace entry. A unique in-scope tab can be reused; if several unbound candidates exist, select one of the open results. That selection is remembered for the browser session. Specific deep-link actions remain exact.
 
 Use separate path scopes for separate workspaces. `queryKeys: "*"` and `allowFragment: true` are explicit options for apps whose views need arbitrary query parameters or hash routes. They do not widen other entries. Command-Return continues to open the selected URL deliberately.
+
+Loading tabs are eligible for reuse through their pending URL. If pages already
+exist under the same origin/path but a restrictive query/fragment rule excludes
+them, the action stops with a configuration message instead of creating another
+tab. Selecting an eligible open result binds that tab for later entry requests.
 
 Build your private package, then import its workflow, load its matching extension and pass the same profile to the native-host installer:
 

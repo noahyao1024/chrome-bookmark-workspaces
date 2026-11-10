@@ -119,7 +119,10 @@ func activate(_ argument: String) throws {
     } else {
         code = 1
         reason = response?.1["reason"] as? String ?? "unconfirmed"
-        _ = try? executeAdapter("notify", reason == "ambiguous_entry" ? "该工作区有多个页面，请重新搜索并选择已打开的标签" : "操作未能确认，请重新搜索后重试")
+        let message = reason == "ambiguous_entry" ? "该工作区有多个页面，请重新搜索并选择已打开的标签" :
+            reason == "entry_scope_constraints" ? "已有该工作区页面，但复用范围不匹配，已停止新建标签。请检查入口的查询参数或片段规则" :
+            reason == "entry_loading" ? "工作区标签正在加载，已停止重复创建，请稍后重试" : "操作未能确认，请重新搜索后重试"
+        _ = try? executeAdapter("notify", message)
     }
     // Keep the existing action IPC shape so the collector can correlate Return.
     let endStarted = DispatchTime.now().uptimeNanoseconds
@@ -138,6 +141,7 @@ func activate(_ argument: String) throws {
                    "durationMs": Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000,
                    "route": route, "reason": reason, "resultType": ProcessInfo.processInfo.environment["chrome_result_type"] ?? "unknown",
                    "exitCode": Int(code), "bridgeMs": bridgeMs, "bridgeHttp": String(response?.0 ?? 0),
+                   "lookupReason": result["lookupReason"] as Any? ?? NSNull(), "entryRequest": payload["entryId"] != nil,
                    "timingInstrumentationMs": Double(timingOverheadNs) / 1_000_000], name: "action-total.jsonl")
     if code != 0 { exit(code) }
 }

@@ -23,9 +23,9 @@ export function createSearchIndex(api, entries, config, publish) {
         if (version !== generation) {dirty = true; continue;}
         saved = bookmarks;
         const tabs = windows.filter(win => !win.incognito).flatMap(win =>
-          (win.tabs || []).filter(tab => !tab.incognito && tab.url).map(tab => ({
+          (win.tabs || []).filter(tab => !tab.incognito && (tab.pendingUrl || tab.url)).map(tab => ({
             tabId: String(tab.id), windowId: String(win.id), tabIndex: tab.index + 1,
-            url: tab.url, title: tab.title || '', windowName: 'Chrome 窗口 ' + win.id
+            url: tab.pendingUrl || tab.url, title: tab.title || '', windowName: 'Chrome 窗口 ' + win.id
           })));
         const items = aliases.items(aliases.addSearchAliases(saved, localAliases), tabs, '', true,
           {indexMode: true, entryPolicies: config.entries, entryTargets: targets});

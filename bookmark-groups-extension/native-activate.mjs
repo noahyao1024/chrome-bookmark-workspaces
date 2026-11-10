@@ -7,7 +7,7 @@ export async function activate(api, payload, control = {}) {
   const expired = () => control.cancelled?.() || (control.expiresAt && Date.now() >= control.expiresAt);
   try {aliases.decide(payload, []);} catch {return failed('invalid_request');}
   if (expired()) return failed('expired');
-  let phases = {};
+  let phases = {}, lookupReason = payload.forceNew ? 'force_new' : null;
   if (!payload.forceNew) {
     let result = await focusExisting(api, payload, control);
     // A stale exact tab hint can be resolved again, but an app-entry scope change
@@ -18,6 +18,7 @@ export async function activate(api, payload, control = {}) {
       result = await focusExisting(api, withoutHint, control);
     }
     if (result.kind !== 'miss') return result;
+    lookupReason = result.reason;
     if (!['no_matching_tab','no_matching_entry'].includes(result.reason)) return failed(result.reason);
     if (payload.entryId && payload.url !== payload.entryURL) return failed('entry_scope_changed');
     phases = result.phases || {};
@@ -42,9 +43,10 @@ export async function activate(api, payload, control = {}) {
     phases.createTabMs = performance.now() - beforeCreate;
     phases.openApiMs = performance.now() - mark;
     if (!tab || tab.incognito || tab.windowId !== win.id || !Number.isSafeInteger(tab.id)) return failed('invalid_created_tab');
+    await control.entries?.noteCreated?.(payload, tab);
     // The callback only observes; its failure cannot trigger another creation.
     try {await control.created?.(tab);} catch { /* Optional diagnostics. */ }
-    return {kind: 'opened', tabId: String(tab.id), windowId: String(win.id),
+    return {kind: 'opened', tabId: String(tab.id), windowId: String(win.id), lookupReason, entryRequest: payload.entryId != null,
       requestedURL: payload.url, targetURL: tab.url || payload.url, targetTitle: tab.title || '',
       active: !!tab.active, committed: !!tab.url && (tab.url !== 'about:blank' || payload.url === 'about:blank'), phases};
   } catch {return failed('creation_unconfirmed');}

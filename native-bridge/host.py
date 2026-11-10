@@ -277,6 +277,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         trace = self.headers.get('X-Chrome-Trace', '')
         if not re.fullmatch(r'[A-Za-z0-9_-]{0,128}', trace):
             trace = ''
+        entry_request = False
         try:
             size = int(self.headers.get('Content-Length', '0'))
             if not 0 < size <= 65536:
@@ -284,6 +285,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(size))
             if not isinstance(payload, dict) or type(payload.get('version')) is not int or payload['version'] != 1:
                 raise ValueError('version')
+            entry_request = payload.get('entryId') is not None
             expires_at = int(self.headers.get('X-Chrome-Expires', '0')) or None
             request_type = 'activate' if self.path == '/activate' else 'focus'
             operation = self.headers.get('X-Chrome-Timing-Operation', '')
@@ -296,11 +298,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except (ValueError, TypeError, json.JSONDecodeError):
             result = {'kind': 'miss', 'reason': 'invalid_request', 'allowFallback': True}
         kind = result.get('kind')
-        code = 200 if kind in ('focused', 'opened') else (422 if result.get('reason') == 'ambiguous_entry' else (409 if result.get('allowFallback') else 504))
+        code = 200 if kind in ('focused', 'opened') else (422 if result.get('reason') in ('ambiguous_entry', 'entry_scope_constraints', 'entry_loading') else (409 if result.get('allowFallback') else 504))
         log_record({'timeMs': int(time.time() * 1000), 'trace': trace, 'result': kind,
                     'reason': result.get('reason'), 'durationMs': round((time.perf_counter() - started) * 1000, 2),
                     'phases': result.get('phases', {}), 'navigationChanged': result.get('navigationChanged', False),
-                    'matchType': result.get('matchType'), 'progressMs': result.get('progressMs', {})})
+                    'matchType': result.get('matchType'), 'progressMs': result.get('progressMs', {}),
+                    'lookupReason': result.get('lookupReason'), 'entryRequest': result.get('entryRequest', entry_request),
+                    'candidateCount': result.get('candidateCount')})
         self.respond(code, result)
 
 

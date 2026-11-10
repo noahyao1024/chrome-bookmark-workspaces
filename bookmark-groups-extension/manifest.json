@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bookmark Workspaces",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Search and reuse bookmarked pages with Alfred; group Work and Personal tabs without duplicates.",
   "permissions": [
     "bookmarks",

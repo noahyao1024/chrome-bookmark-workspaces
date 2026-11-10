@@ -11,10 +11,18 @@ export function withinScope(rule, value) {
   } catch { return false; }
 }
 
+const liveURL = tab => tab.pendingUrl || tab.url || '';
+const placeholder = url => !url || ['about:blank','chrome://newtab/','chrome://new-tab-page/'].includes(url);
+
+function sameEntryBoundary(rule, value) {
+  return withinScope({...rule, scope: {...rule.scope, queryKeys: '*', allowFragment: true}}, value);
+}
+
 export function createEntryReuse(api, configured) {
   const rules = configured.filter(rule => typeof rule.id === 'string' && withinScope(rule, rule.url));
   const byId = new Map(rules.map(rule => [rule.id, rule]));
   const bindings = new Map(), origins = new Map();
+  const pendingCreations = new Map();
   const key = 'chromeAliasEntryBindingsV1';
   const fingerprint = rule => JSON.stringify([rule.url, rule.scope]);
   let writes = Promise.resolve();
@@ -33,11 +41,28 @@ export function createEntryReuse(api, configured) {
     return writes;
   }
   function matches(rule, tab) {
-    return !!tab && !tab.incognito && withinScope(rule, tab.url) && (!tab.pendingUrl || withinScope(rule, tab.pendingUrl));
+    return !!tab && !tab.incognito && withinScope(rule, liveURL(tab)) &&
+      (placeholder(tab.url) || withinScope(rule, tab.url));
+  }
+  function knownLoading(rule, tab) {
+    const pending = tab && pendingCreations.get(tab.id);
+    if (!pending || pending.entryId !== rule.id) return false;
+    if (pending.expires < Date.now() || !placeholder(tab.url) ||
+        (tab.pendingUrl && !withinScope(rule, tab.pendingUrl))) {
+      pendingCreations.delete(tab.id); return false;
+    }
+    return !tab.incognito;
+  }
+  async function noteCreated(payload, tab) {
+    await ready;
+    const rule = byId.get(payload.entryId);
+    if (!rule || payload.entryURL !== rule.url || !withinScope(rule, payload.url) || tab.incognito || !placeholder(tab.url)) return;
+    pendingCreations.set(tab.id, {entryId: rule.id, expires: Date.now() + 60_000});
   }
   async function forgetTab(tabId) {
     await ready;
     origins.delete(tabId);
+    pendingCreations.delete(tabId);
     let changed = false;
     for (const [entryId, id] of bindings) if (id === tabId) { bindings.delete(entryId); changed = true; }
     if (changed) await persist();
@@ -76,7 +101,8 @@ export function createEntryReuse(api, configured) {
     if (changed) await persist();
   }
   async function candidates() {
-    return (await api.tabs.query({windowType: 'normal'})).filter(tab => !tab.incognito);
+    return (await api.tabs.query({windowType: 'normal'})).filter(tab => !tab.incognito)
+      .sort((a,b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
   }
   async function resolve(payload) {
     await ready;
@@ -97,14 +123,19 @@ export function createEntryReuse(api, configured) {
       try {
         const tab = await api.tabs.get(bound);
         if (matches(rule, tab)) return target(tab, 'entry-bound');
+        if (knownLoading(rule, tab)) return {kind: 'failed', reason: 'entry_loading', allowFallback: false};
       } catch { /* Expired browser-session tab ID. */ }
       bindings.delete(rule.id);await persist();
     }
-    const tabs = (await candidates()).filter(tab => matches(rule, tab));
-    const exact = tabs.filter(tab => tab.url === rule.url).sort((a,b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+    const allTabs = await candidates();
+    const tabs = allTabs.filter(tab => matches(rule, tab));
+    const exact = tabs.filter(tab => liveURL(tab) === rule.url);
     if (exact.length) return target(exact[0], 'entry-exact');
     if (tabs.length === 1) return target(tabs[0], 'entry-unique');
     if (tabs.length > 1) return {kind: 'failed', reason: 'ambiguous_entry', allowFallback: false};
+    if (allTabs.some(tab => knownLoading(rule, tab))) return {kind: 'failed', reason: 'entry_loading', allowFallback: false};
+    const excluded = allTabs.filter(tab => sameEntryBoundary(rule, liveURL(tab)));
+    if (excluded.length) return {kind: 'failed', reason: 'entry_scope_constraints', allowFallback: false, candidateCount: excluded.length};
     return miss('no_matching_entry');
   }
   async function targets() {
@@ -117,10 +148,10 @@ export function createEntryReuse(api, configured) {
         bindings.delete(rule.id);changed = true;
       }
       for (const tab of matchesHere) result.push({entryId: rule.id, entryURL: rule.url, tabId: String(tab.id),
-        windowId: String(tab.windowId), url: tab.url, bound: bindings.get(rule.id) === tab.id});
+        windowId: String(tab.windowId), url: liveURL(tab), bound: bindings.get(rule.id) === tab.id});
     }
     if (changed) await persist();
     return result;
   }
-  return {ready, resolve, targets, remember, forgetTab, observeTab, matches};
+  return {ready, resolve, targets, remember, forgetTab, observeTab, matches, noteCreated};
 }

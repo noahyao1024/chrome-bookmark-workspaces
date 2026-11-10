@@ -94,6 +94,20 @@ class HostTests(unittest.TestCase):
         with patch('host.log_record'):handler.do_POST()
         self.assertEqual(replies,[(422,result)])
 
+    def test_scope_constraints_block_without_fallback_and_invalid_requests_are_safe(self):
+        handler=object.__new__(Handler);replies=[]
+        result={'kind':'failed','reason':'entry_scope_constraints','allowFallback':False,'candidateCount':2}
+        handler.server=SimpleNamespace(session=SimpleNamespace(version=2,focus=lambda *a,**kw:result))
+        handler.respond=lambda code,value:replies.append((code,value))
+        handler.path='/activate';body=json.dumps({'version':1,'url':'https://example.test/team/issues','entryId':'workspace'}).encode()
+        handler.headers={'Content-Length':str(len(body)),'X-Chrome-Profile':'Default'};handler.rfile=io.BytesIO(body)
+        with patch('host.log_record') as log:
+            handler.do_POST();self.assertEqual(replies[-1],(422,result));self.assertTrue(log.call_args[0][0]['entryRequest'])
+        handler.headers={'Content-Length':'0'};handler.rfile=io.BytesIO()
+        with patch('host.log_record'):handler.do_POST()
+        self.assertEqual(replies[-1][0],409)
+
+
     def test_index_is_profile_scoped_and_cleared_on_disconnect(self):
         session=Session(io.BytesIO());session.ready=True
         session.receive({'type':'search_index','index':{'profile':'Work','items':[]}})
