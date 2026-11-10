@@ -21,6 +21,8 @@
 
 需要 macOS 14 或更新版本、Chrome 121 或更新版本、Alfred 5 Powerpack，以及 Python 3.9 或更新版本。发布包同时包含 Apple Silicon 和 Intel 架构。
 
+从旧的本地版本迁移时，先停用旧分组扩展和旧 Alfred 工作流。同一套标签组只使用一个自动分组扩展。
+
 1. 从 [Releases](https://github.com/noahyao1024/chrome-bookmark-workspaces/releases) 下载 `bookmark-workspaces-macos-universal.zip`，解压到长期保留的目录。
 2. 在选定的 Chrome Profile 中打开 `chrome://extensions`，开启「开发者模式」，选择「加载已解压的扩展程序」，选中解压后的 `extension` 目录。
 3. 复制扩展卡片上的 ID。在解压目录执行以下命令，将 `YOUR_EXTENSION_ID` 替换为该 ID：
