@@ -7,3 +7,5 @@ Initial public release of Bookmark Workspaces.
 - Optional diagnostics remain a separate, opt-in source installation.
 
 No personal bookmarks, account/workspace rules, browser databases, local installation records or Apple SF Symbols artwork are included.
+
+macOS binaries are ad-hoc signed and are not Apple-notarized. If Gatekeeper blocks a downloaded executable, follow the README's source-build instructions.

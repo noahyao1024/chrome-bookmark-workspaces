@@ -22,6 +22,8 @@ Search is local until you open a URL or select Google search. The extension does
 
 Requirements: macOS 14 or newer, Chrome 121 or newer, Alfred 5 with Powerpack, and Python 3.9 or newer. Release binaries include both Apple Silicon and Intel architectures. Source builds additionally need Xcode Command Line Tools; tests need Node.js 20 or newer.
 
+Release binaries are ad-hoc signed, not Apple-notarized. If macOS blocks a downloaded executable, use the source-build instructions below; no security settings need to be disabled to build your own copy.
+
 When migrating from an earlier local copy, disable its grouping extension and Alfred workflow first. Run only one extension that automatically manages these category groups.
 
 1. Download `bookmark-workspaces-macos-universal.zip` from [Releases](https://github.com/noahyao1024/chrome-bookmark-workspaces/releases) and extract it to a permanent directory.
