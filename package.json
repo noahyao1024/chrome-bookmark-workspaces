@@ -1,6 +1,6 @@
 {
   "name": "chrome-bookmark-workspaces",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Bookmark aliases, tab reuse and automatic tab groups for Chrome and Alfred",
   "license": "MIT",

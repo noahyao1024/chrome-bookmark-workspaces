@@ -204,7 +204,7 @@ var BookmarkWorkspaces = (function () {
       if (region) state += " · " + region;
       var detail = bookmark ? bookmark.path : (tab.windowName || "Chrome");
       var aliases = sorted.map(function (b) { return b.title; }).filter(function (name, i, all) { return all.indexOf(name) === i && name !== title; });
-      if (options.indexMode && aliases.length) title += " / " + aliases.join(" / ");
+      // Keep aliases in the search index; the visible title is one saved name.
       var collision = sorted.find(function (b) { var urls = nameURLs.get(normalized(b.title).trim()); return urls && urls.size > 1; });
       var context = collision ? collisionContext(g.url, Array.from(nameURLs.get(normalized(collision.title).trim()))) : "";
       searchable += context ? " " + normalized(context) : "";

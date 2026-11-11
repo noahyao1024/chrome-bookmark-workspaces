@@ -414,15 +414,25 @@ func results(_ index: Row, query: String, history: URL? = nil) throws -> [Row] {
         let text = row["match"] as? String ?? normalized(row["title"] as? String ?? "")
         if row["valid"] as? Bool != false && !tokens.allSatisfy({ text.contains($0) }) { return nil }
         var score = 3
+        let aliases = row["_aliases"] as? [String] ?? []
+        let titles = aliases.isEmpty ? [row["title"] as? String ?? ""] : aliases
+        var displayTitle = titles.first ?? ""
         if !input.isEmpty {
-            let aliases = row["_aliases"] as? [String] ?? []
-            let titles = aliases.isEmpty ? [row["title"] as? String ?? ""] : aliases
-            for name in titles {
+            for (position, name) in titles.enumerated() {
                 let title = normalized(name)
-                score = min(score, title == needle ? 0 : (title.hasPrefix(needle) ? 1 : (tokens.allSatisfy { title.contains($0) } ? 2 : 3)))
+                let candidate = title == needle ? 0 : (title.hasPrefix(needle) ? 1 : (tokens.allSatisfy { title.contains($0) } ? 2 : 3))
+                if position == 0 || candidate < score { score = candidate; displayTitle = name }
             }
         }
-        return (offset, score, row)
+        var displayed = row
+        if !aliases.isEmpty {
+            displayed["title"] = displayTitle
+            if var text = row["text"] as? Row, let url = text["copy"] as? String {
+                text["largetype"] = displayTitle + "\n" + url
+                displayed["text"] = text
+            }
+        }
+        return (offset, score, displayed)
     }.sorted { a, b in
         let ah = a.row["_history"] as? Bool == true, bh = b.row["_history"] as? Bool == true
         if ah != bh { return !ah }
@@ -487,7 +497,7 @@ func run() throws {
         let session = UUID(uuidString: supplied) == nil ? UUID().uuidString : supplied
         let path = cache.appendingPathComponent(session)
         if !fm.fileExists(atPath: path.path) {
-            var saved = native; saved["_historyVersion"] = 1; saved["_presentationVersion"] = 9
+            var saved = native; saved["_historyVersion"] = 1; saved["_presentationVersion"] = 10
             try JSONSerialization.data(withJSONObject: saved).write(to: path, options: [.atomic])
             try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
             for old in (try? fm.contentsOfDirectory(at: cache, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {
@@ -542,7 +552,7 @@ func run() throws {
        Date().timeIntervalSince(modified) < 600 {
         index = try? readIndex(path)
         if index?["_historyVersion"] as? Int != 1 { index = nil }
-        if index?["_presentationVersion"] as? Int != 9 { index = nil }
+        if index?["_presentationVersion"] as? Int != 10 { index = nil }
     }
     searchPhases["cacheReadMs"] = (ProcessInfo.processInfo.systemUptime - cacheReadStarted) * 1000
     let cacheHit = index != nil
@@ -574,7 +584,7 @@ func run() throws {
               decoded["items"] is [Row] else { throw NSError(domain: "ChromeIndex", code: 2) }
         index = decoded
         index?["_historyVersion"] = 1
-        index?["_presentationVersion"] = 9
+        index?["_presentationVersion"] = 10
         if historyUnavailable { index?["_historyUnavailable"] = true }
         try JSONSerialization.data(withJSONObject: index!).write(to: URL(fileURLWithPath: path), options: [.atomic])
         try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)

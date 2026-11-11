@@ -1,14 +1,10 @@
-Bookmark Workspaces v0.1.2 fixes duplicate Grafana tabs after dashboard slug redirects.
+Bookmark Workspaces v0.1.3 fixes long search-result titles introduced by matching Grafana bookmark aliases to redirected tabs.
 
-- Recognize both `/d/<UID>/...` and `/v<number>/d/<UID>/...` when finding open tabs by bookmark aliases.
-- Reuse equivalent dashboard views within the configured profile, preserving scheme, host/port, namespace, UID, organization, time, filters and fragment.
-- Normalize query-key order and form encoding; collapse only identical repeated `orgId`, `from` and `to` values. Preserve repeated variable order and multiplicity.
-- Apply the same identity to bookmark-folder grouping, leaving conflicting Work/Personal assignments ungrouped.
-- Preserve saved URLs, exact-link priority, explicit new-tab/copy actions and the strict cross-profile fallback.
-- Add regression coverage for redirected and loading tabs, stale tab hints, repeated activation, query boundaries and ambiguous grouping.
+- Show the single saved name that best matches the query instead of joining all aliases into the main title.
+- Keep every alias searchable and preserve names that intentionally contain slashes.
+- Apply the same display rule to cached results and large-type previews.
+- Preserve Grafana tab reuse, relevance ranking, tab IDs, saved URLs and copy/new-tab actions.
 
-No domain-wide Grafana whitelist or configuration change is required. Existing duplicate tabs are left open.
-
-No personal bookmarks, account/workspace rules, browser databases, local installation records or Apple SF Symbols artwork are included.
+No bookmark names or browser pages are modified. No personal configuration or browsing data is included.
 
 macOS binaries are ad-hoc signed and are not Apple-notarized. If Gatekeeper blocks a downloaded executable, follow the README's source-build instructions.

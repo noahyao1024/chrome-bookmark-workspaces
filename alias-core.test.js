@@ -58,7 +58,8 @@ test('native filtering retains every alias, folder path, page title and URL',()=
   const second={...bookmark,title:'metrics eu ent'};
   const rows=api.items([bookmark,second],[tab],'',true,{indexMode:true});
   assert.equal(rows.length,1);
-  assert.ok(rows[0].title.includes(bookmark.title));assert.ok(rows[0].title.includes(second.title));
+  assert.equal(rows[0].title,bookmark.title);
+  assert.deepEqual(rows[0]._aliases,[bookmark.title,second.title]);
   for(const text of ['metrics eu ent','work / duty / metrics','service monitoring','region=us-east']) assert.ok(rows[0].match.includes(text));
 });
 

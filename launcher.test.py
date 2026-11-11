@@ -127,6 +127,34 @@ class LauncherTests(unittest.TestCase):
             self.assertTrue(json.loads(rows[0]['mods']['cmd']['arg'])['forceNew'])
             self.assertEqual(urllib.parse.parse_qs(urllib.parse.urlsplit(json.loads(rows[-1]['arg'])['url']).query)['q'], [query])
 
+    def test_grafana_alias_displays_only_the_matching_saved_name(self):
+        long_name = 'Complete service monitoring dashboard / Operations'
+        short_name = 'monitor overview'
+        live_url = 'https://grafana.example.test/v10/d/UID/current-title?orgId=1'
+        saved_url = live_url.replace('current-title', 'old-title')
+        data = {'bookmarks': [
+            {'title': long_name, 'url': live_url, 'path': 'Work / Monitor'},
+            {'title': short_name, 'url': saved_url, 'path': 'Work / Monitor'}],
+            'tabs': [{'title': 'Website title', 'url': live_url, 'tabId': '20', 'windowId': '10'}]}
+        script = "const a=require('./alias-core.js');let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{const d=JSON.parse(s);console.log(JSON.stringify({items:a.items(d.bookmarks,d.tabs,'',true,{indexMode:true})}));});"
+        self.index.write_text(subprocess.check_output(['node', '-e', script], input=json.dumps(data), text=True, cwd=ROOT))
+        for query, expected in [('monitor overview', short_name), ('MONITOR OVER', short_name),
+                                ('complete service', long_name), ('work monitor', long_name), ('', long_name)]:
+            row = self.rows(query)[0 if query else 1]
+            self.assertEqual(row['title'], expected)
+            self.assertEqual(json.loads(row['arg']), {**self.payload, 'url': live_url})
+            self.assertEqual(row['text']['copy'], live_url)
+            self.assertEqual(row['text']['largetype'], expected + '\n' + live_url)
+            self.assertEqual(row['mods']['ctrl']['arg'], live_url)
+            self.assertEqual(json.loads(row['mods']['cmd']['arg']), {**self.payload, 'url': live_url, 'forceNew': True})
+
+        # A pre-update cached row may still contain a joined title.
+        index = json.loads(self.index.read_text())
+        index['items'][0]['title'] = long_name + ' / ' + short_name
+        self.index.write_text(json.dumps(index))
+        self.assertEqual(self.rows(short_name)[0]['title'], short_name)
+
+
     def test_unmatched_text_searches_without_go_prefix(self):
         rows = self.rows('你好 C++ & why?')
         self.assertEqual(len(rows), 1)
