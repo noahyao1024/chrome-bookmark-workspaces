@@ -104,7 +104,8 @@ python3 scripts/check_public.py --artifacts
 ## Behavior and limits
 
 - Tab grouping preserves pinned, incognito and already-grouped tabs. A group in another window is neither duplicated nor moved. Closed/saved groups are not discoverable through the ordinary tab-group API.
-- Folder matching is exact except for explicitly configured app-entry scopes and same-account Gmail mailbox views. Ordinary region, account, query and fragment differences stay significant.
+- Folder matching is exact except for Grafana same-view URLs, explicitly configured app-entry scopes and same-account Gmail mailbox views. Ordinary region, account, query and fragment differences stay significant.
+- Grafana hosts beginning with `grafana` support `/d/<UID>/...` and `/v<number>/d/<UID>/...` slug redirects. Native reuse preserves scheme, host/port, namespace, case-sensitive UID, all query values and fragment. Query-key order and form encoding are normalized; only identical repeated `orgId`, `from`, and `to` values are collapsed. Repeated variable values retain order and multiplicity. Conflicting organizations disable relaxed matching. Bookmark URLs and explicit copy/new-tab actions stay unchanged. Equivalent views inherit Work/Personal only when their folder is unambiguous.
 - The native index is scoped to the extension's profile. The JXA fallback can see other normal Chrome windows, so use a single profile when relying on fallback tab discovery. New pages always use the configured profile directory.
 - Recent-tab switching is a two-tab toggle, not a hold-and-release tab switcher. Chrome may reject reserved shortcuts such as Control-Tab.
 - Archive detection uses folders named `Archive` or `Archived`. Type `archive` or `归档` to find their contents explicitly.

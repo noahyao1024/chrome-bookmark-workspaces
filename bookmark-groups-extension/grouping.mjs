@@ -1,4 +1,5 @@
 import {withinScope} from './entry-reuse.mjs';
+import aliases from './alias-core.mjs';
 
 export const categories = {work: {title: 'Work', color: 'blue'}, personal: {title: 'Personal', color: 'green'}};
 
@@ -22,6 +23,15 @@ export function buildIndex(tree) {
 }
 
 export function categoryFor(tab, index, entries = []) {
+  const dashboard = aliases.grafanaKey(tab.pendingUrl || tab.url || '');
+  if (dashboard) {
+    const found = new Set();
+    for (const [url, categories] of index) {
+      if (aliases.grafanaKey(url) === dashboard) for (const category of categories) found.add(category);
+    }
+    // Equivalent slugs in both folders are ambiguous, even with an exact match.
+    if (found.size) return found.size === 1 ? [...found][0] : null;
+  }
   // Do not strip query parameters: region and service selectors are significant.
   for (const url of [tab.pendingUrl || tab.url]) {
     const found = index.get(url);

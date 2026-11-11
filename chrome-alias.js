@@ -18,12 +18,41 @@ var BookmarkWorkspaces = (function () {
     }
     return "";
   }
+  function dashboardParts(url) {
+    // Keep this parser usable in JXA, where URL/URLSearchParams are unavailable.
+    // A single trailing slug is descriptive; namespace and UID are identity.
+    var parts = /^(https?):\/\/([^/?#]+)((?:\/v[0-9]+)?\/d)\/([A-Za-z0-9_-]+)(?:\/[^/?#]*)?(\?[^#]*)?(#.*)?$/.exec(url);
+    if (!parts || !/^grafana(?:[.-]|$)/i.test(parts[2]) || !/^[a-z0-9.-]+(?::[0-9]+)?$/i.test(parts[2])) return null;
+    var values = new Map();
+    try {
+      (parts[5] || "").slice(1).split("&").filter(Boolean).forEach(function (pair) {
+        var fields = pair.split("=");
+        var key = decodeURIComponent(fields.shift().replace(/\+/g, " "));
+        var value = decodeURIComponent(fields.join("=").replace(/\+/g, " "));
+        if (!values.has(key)) values.set(key, []);
+        values.get(key).push(value);
+      });
+    } catch (_) { return null; }
+    var org = values.get("orgId") || [];
+    if (org.some(function (value) { return value !== org[0]; })) return null;
+    var query = Array.from(values.keys()).sort().map(function (key) {
+      var all = values.get(key);
+      // Only identical repetitions of these singular fields are redundant.
+      // Variable selections keep their multiplicity and per-key order.
+      if (["orgId", "from", "to"].indexOf(key) >= 0 && all.every(function (value) { return value === all[0]; })) all = [all[0]];
+      return [key, all];
+    });
+    return {base: [parts[1], parts[2].toLowerCase(), parts[3], parts[4]],
+      org: org.length ? org[0] : null, query: query, fragment: parts[6] || ""};
+  }
   function dashboardKey(url) {
-    // Discovery only: a Grafana dashboard keeps its UID when variables change.
-    // Do not generalize this rule to services with IDs in query parameters.
-    var parts = /^(https?):\/\/([^/?#]+)\/d\/([^/?#]+)(?:[/?#]|$)/i.exec(url);
-    if (!parts || !/^grafana(?:[.-]|$)/i.test(parts[2])) return null;
-    return parts[1].toLowerCase() + "://" + parts[2].toLowerCase() + "/d/" + parts[3] + "?orgId=" + queryValue(url, "orgId");
+    // Alias discovery also finds other views; their action URLs stay separate.
+    var parts = dashboardParts(url);
+    return parts ? JSON.stringify([parts.base, parts.org]) : null;
+  }
+  function grafanaKey(url) {
+    var parts = dashboardParts(url);
+    return parts ? JSON.stringify([parts.base, parts.query, parts.fragment]) : null;
   }
   function gmailAccount(url, inboxOnly) {
     // Only an explicit account's mailbox entry may reuse a different Gmail view.
@@ -241,10 +270,16 @@ var BookmarkWorkspaces = (function () {
         var mailbox = tabs.find(function (t) { return gmailAccount(t.url, false) === account; });
         if (mailbox) return { kind: "focus", tab: mailbox };
       }
+      var dashboard = options && options.allowGrafanaReuse ? grafanaKey(payload.url) : null;
+      if (dashboard !== null) {
+        var sameView = tabs.filter(function (t) { return grafanaKey(t.url) === dashboard; });
+        var hinted = sameView.find(function (t) { return String(t.tabId) === String(payload.tabId) && String(t.windowId) === String(payload.windowId); });
+        if (hinted || sameView[0]) return { kind: "focus", tab: hinted || sameView[0], matchType: "grafana-dashboard" };
+      }
     }
     return { kind: "open", url: payload.url };
   }
-  return { flatten: flatten, items: items, decide: decide, addSearchAliases: addSearchAliases };
+  return { flatten: flatten, items: items, decide: decide, addSearchAliases: addSearchAliases, grafanaKey: grafanaKey };
 })();
 if (typeof module !== "undefined") module.exports = BookmarkWorkspaces;
 

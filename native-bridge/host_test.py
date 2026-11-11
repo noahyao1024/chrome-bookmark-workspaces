@@ -57,7 +57,7 @@ class HostTests(unittest.TestCase):
         self.assertFalse(session.focus({'tabId':'10'})['allowFallback'])
 
     def test_idless_resolution_requires_an_explicit_verified_match_ack(self):
-        for match in ['resolved-url','gmail-mailbox','entry-bound','entry-exact','entry-unique',None]:
+        for match in ['resolved-url','gmail-mailbox','grafana-dashboard','entry-bound','entry-exact','entry-unique',None]:
             session=Session(io.BytesIO());session.ready=True
             session.send=lambda obj:session.receive({'type':'result','id':obj['id'],'result':{'kind':'focused','tabId':'10','matchType':match}})
             result=session.focus({'version':1,'url':'https://mail.google.com/mail/u/0/#inbox'})

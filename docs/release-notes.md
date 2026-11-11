@@ -1,14 +1,13 @@
-Bookmark Workspaces v0.1.1 fixes duplicate app-entry opens after navigation.
+Bookmark Workspaces v0.1.2 fixes duplicate Grafana tabs after dashboard slug redirects.
 
-- Reuse entries while their initial document is still loading.
-- Preserve entry discovery for pending URLs and prefer recently used duplicate targets.
-- Stop implicit tab creation when existing workspace pages are excluded by restrictive query or fragment settings.
-- Report creation lookup reasons without recording URLs or query contents.
-- Add regression coverage for chat/session routes, agent views, pending navigation and cross-workspace boundaries.
+- Recognize both `/d/<UID>/...` and `/v<number>/d/<UID>/...` when finding open tabs by bookmark aliases.
+- Reuse equivalent dashboard views within the configured profile, preserving scheme, host/port, namespace, UID, organization, time, filters and fragment.
+- Normalize query-key order and form encoding; collapse only identical repeated `orgId`, `from` and `to` values. Preserve repeated variable order and multiplicity.
+- Apply the same identity to bookmark-folder grouping, leaving conflicting Work/Personal assignments ungrouped.
+- Preserve saved URLs, exact-link priority, explicit new-tab/copy actions and the strict cross-profile fallback.
+- Add regression coverage for redirected and loading tabs, stale tab hints, repeated activation, query boundaries and ambiguous grouping.
 
-Existing restrictive app-entry configurations may need additional query keys or
-`queryKeys: "*"` with `allowFragment: true` when the origin/path already defines
-the workspace. Private configurations are not modified by the public release.
+No domain-wide Grafana whitelist or configuration change is required. Existing duplicate tabs are left open.
 
 No personal bookmarks, account/workspace rules, browser databases, local installation records or Apple SF Symbols artwork are included.
 

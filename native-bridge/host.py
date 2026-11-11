@@ -158,7 +158,7 @@ class Session:
                 has_id = payload.get('tabId') is not None
                 expected = str(result.get('tabId')) == str(payload.get('tabId')) if has_id and request_type == 'focus' else (
                     str(result.get('tabId', '')).isdigit() and int(result['tabId']) > 0
-                    and result.get('matchType') in ('id', 'resolved-url', 'gmail-mailbox', 'entry-bound', 'entry-selected', 'entry-exact', 'entry-unique'))
+                    and result.get('matchType') in ('id', 'resolved-url', 'gmail-mailbox', 'grafana-dashboard', 'entry-bound', 'entry-selected', 'entry-exact', 'entry-unique'))
                 if not expected:
                     return {'kind': 'failed', 'reason': 'invalid_ack', 'allowFallback': False}
             if result.get('kind') == 'opened':
