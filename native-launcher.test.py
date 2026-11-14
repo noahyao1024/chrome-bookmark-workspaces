@@ -93,7 +93,7 @@ class Tests(unittest.TestCase):
         self.assertIn('rerun',result)
         self.assertEqual(len(result['items']),1)
 
-    def test_native_index_keeps_history_search_and_ten_result_limit(self):
+    def test_native_index_keeps_history_search_and_five_result_limit(self):
         first=json.loads(self.run_launcher('').stdout)
         session=first['variables']['chrome_alias_session']
         directory=self.root/'cache'/'search-sessions'/(session+'.history');directory.mkdir()
@@ -103,7 +103,9 @@ class Tests(unittest.TestCase):
         (directory/'.snapshot-ready').touch()
         self.env['chrome_alias_session']=session
         result=json.loads(self.run_launcher('needle').stdout)
-        self.assertEqual(sum(bool(row.get('_history')) for row in result['items']),10)
+        self.assertEqual(sum(bool(row.get('_history')) for row in result['items']),5)
+        self.assertEqual(result['items'][0]['variables']['chrome_result_type'],'search')
+        self.assertEqual(len(result['items']),6)
         self.assertFalse(any(row.get('valid') is False for row in result['items']))
 
     def test_unsafe_action_never_reaches_browser_or_fallback(self):

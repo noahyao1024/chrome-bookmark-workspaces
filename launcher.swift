@@ -27,7 +27,7 @@ func timingEvent(_ type: String, data: Row = [:], context: Row? = nil) -> Row {
     return (try? JSONSerialization.jsonObject(with: Data(response.prefix(Int(count)).map { UInt8(bitPattern: $0) }))) as? Row ?? [:]
 }
 let historyCandidateLimit = 50
-let historyResultLimit = 10
+let historyResultLimit = 5
 var searchPhases: [String: Double] = [:]
 let inheritedActionTrace = ProcessInfo.processInfo.environment["chrome_search_trace"] ?? ""
 let diagnosticTrace = CommandLine.arguments.dropFirst().first == "--activate" &&
@@ -370,13 +370,26 @@ func addressRow(_ input: String) throws -> Row {
     ]
 }
 
+enum ResultGroup: Int { case tab, favorite, search, history, notice }
+
+func resultSource(_ row: Row) -> String {
+    row["_source"] as? String ?? (row["_history"] as? Bool == true ? "history" : "bookmark")
+}
+
+func resultGroup(_ row: Row) -> ResultGroup {
+    if row["valid"] as? Bool == false { return .notice }
+    let source = resultSource(row)
+    if source.hasPrefix("opened") { return .tab }
+    return source == "history" ? .history : .favorite
+}
+
 func styledResult(_ original: Row) -> Row {
     var row = original
     if row["valid"] as? Bool == false {
         row["icon"] = ["path": "result-icons/warning.png"]
         return row
     }
-    let source = row["_source"] as? String ?? (row["_history"] as? Bool == true ? "history" : "bookmark")
+    let source = resultSource(row)
     if row["_archived"] as? Bool == true {
         row["subtitle"] = (row["subtitle"] as? String ?? "").replacingOccurrences(of: "书签 · ↩ 打开", with: "归档 · ↩ 打开")
     }
@@ -409,8 +422,20 @@ func results(_ index: Row, query: String, history: URL? = nil) throws -> [Row] {
     }
     // The JXA index already normalizes match strings; only rank titles once.
     let filterStarted = ProcessInfo.processInfo.systemUptime
+    let address = try addressRow(input)
+    let numericSearch = (address["variables"] as? Row)?["chrome_result_type"] as? String == "search" &&
+        needle.range(of: "^[0-9e.()+*/^%=×÷−\\s-]+$", options: .regularExpression) != nil && needle.contains(where: { $0.isNumber })
+    let pinAddress = input.isEmpty || numericSearch
+    let addressURL = (address["text"] as? Row)?["copy"] as? String
+    func matchesAddress(_ row: Row) -> Bool {
+        // A workspace entry can share a page URL but has a different action.
+        row["_entry"] as? Bool != true && row["valid"] as? Bool != false &&
+            addressURL != nil && (row["text"] as? Row)?["copy"] as? String == addressURL
+    }
     var displayedHistory = 0
-    var rows = candidates.enumerated().compactMap { offset, row -> (offset: Int, score: Int, row: Row)? in
+    var rows = candidates.enumerated().compactMap { offset, row -> (offset: Int, group: ResultGroup, score: Int, row: Row)? in
+        let group = resultGroup(row)
+        if input.isEmpty && group == .history { return nil }
         let text = row["match"] as? String ?? normalized(row["title"] as? String ?? "")
         if row["valid"] as? Bool != false && !tokens.allSatisfy({ text.contains($0) }) { return nil }
         var score = 3
@@ -432,17 +457,19 @@ func results(_ index: Row, query: String, history: URL? = nil) throws -> [Row] {
                 displayed["text"] = text
             }
         }
-        return (offset, score, displayed)
+        return (offset, group, score, displayed)
     }.sorted { a, b in
-        let ah = a.row["_history"] as? Bool == true, bh = b.row["_history"] as? Bool == true
-        if ah != bh { return !ah }
+        if a.group != b.group { return a.group.rawValue < b.group.rawValue }
         let aa = a.row["_archived"] as? Bool == true, ba = b.row["_archived"] as? Bool == true
         if aa != ba { return !aa }
         return a.score == b.score ? a.offset < b.offset : a.score < b.score
     }.filter { result in
+        // Remove an exact duplicate of the address/search action before the
+        // history cap, so it cannot consume one of the five history slots.
+        if (numericSearch || result.group == .history) && matchesAddress(result.row) { return false }
         // Cap history after relevance ranking and full-URL merging. Bookmark/tab
         // aliases found through older historical titles must remain available.
-        guard result.row["_history"] as? Bool == true else { return true }
+        guard result.group == .history else { return true }
         guard displayedHistory < historyResultLimit else { return false }
         displayedHistory += 1
         return true
@@ -450,14 +477,13 @@ func results(_ index: Row, query: String, history: URL? = nil) throws -> [Row] {
     if historyUnavailable && !input.isEmpty {
         rows.append(["title": "暂时无法读取 Chrome 历史", "subtitle": "标签和书签仍可搜索；重新唤起后重试", "valid": false])
     }
-    let address = try addressRow(input)
-    let styled = rows.map(styledResult)
+    // Reserve the search action's position even with no tab/bookmark matches.
+    let split = rows.firstIndex { resultGroup($0).rawValue > ResultGroup.favorite.rawValue } ?? rows.count
+    let addressAlreadyListed = !pinAddress && rows.prefix(split).contains(where: matchesAddress)
+    var styled = rows.map(styledResult)
+    if !addressAlreadyListed { styled.insert(address, at: pinAddress ? 0 : split) }
     searchPhases["filterMs"] = (ProcessInfo.processInfo.systemUptime - filterStarted) * 1000
-    let numeric = normalized(input)
-    let numericSearch = (address["variables"] as? Row)?["chrome_result_type"] as? String == "search" &&
-        numeric.range(of: "^[0-9e.()+*/^%=×÷−\\s-]+$", options: .regularExpression) != nil && numeric.contains(where: { $0.isNumber })
-    if numericSearch { return [address] + styled }
-    return input.isEmpty ? [address] + styled : styled + [address]
+    return styled
 }
 
 func readIndex(_ path: String) throws -> Row {
@@ -497,7 +523,7 @@ func run() throws {
         let session = UUID(uuidString: supplied) == nil ? UUID().uuidString : supplied
         let path = cache.appendingPathComponent(session)
         if !fm.fileExists(atPath: path.path) {
-            var saved = native; saved["_historyVersion"] = 1; saved["_presentationVersion"] = 10
+            var saved = native; saved["_historyVersion"] = 1; saved["_presentationVersion"] = 11
             try JSONSerialization.data(withJSONObject: saved).write(to: path, options: [.atomic])
             try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
             for old in (try? fm.contentsOfDirectory(at: cache, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {
@@ -552,7 +578,7 @@ func run() throws {
        Date().timeIntervalSince(modified) < 600 {
         index = try? readIndex(path)
         if index?["_historyVersion"] as? Int != 1 { index = nil }
-        if index?["_presentationVersion"] as? Int != 10 { index = nil }
+        if index?["_presentationVersion"] as? Int != 11 { index = nil }
     }
     searchPhases["cacheReadMs"] = (ProcessInfo.processInfo.systemUptime - cacheReadStarted) * 1000
     let cacheHit = index != nil
@@ -584,7 +610,7 @@ func run() throws {
               decoded["items"] is [Row] else { throw NSError(domain: "ChromeIndex", code: 2) }
         index = decoded
         index?["_historyVersion"] = 1
-        index?["_presentationVersion"] = 10
+        index?["_presentationVersion"] = 11
         if historyUnavailable { index?["_historyUnavailable"] = true }
         try JSONSerialization.data(withJSONObject: index!).write(to: URL(fileURLWithPath: path), options: [.atomic])
         try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)

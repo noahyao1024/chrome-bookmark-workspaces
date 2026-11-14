@@ -13,7 +13,7 @@ Search Chrome bookmarks by the names you gave them, switch to an existing page, 
 - `Work` and `Personal` bookmark folders drive tab groups, including nested folders. A missing group is created only when no group of that category is open elsewhere.
 - Optional app-entry rules reuse a page within an explicit origin and workspace path. Gmail mailbox reuse respects the account number.
 - Archived bookmarks remain searchable but rank below current bookmarks and tabs. Same-name links show distinguishing regions, views or data sources.
-- Numbers and expressions such as `1+2` remain literal Google searches. History contributes at most 10 results.
+- Numbers and expressions such as `1+2` remain literal Google searches. History contributes at most 5 results.
 - A Chrome command alternates the two most recently used tabs in the current window. Assign a Chrome-supported shortcut at `chrome://extensions/shortcuts`.
 
 Search is local until you open a URL or select Google search. The extension does not rename, move or delete bookmarks. Result labels currently use Simplified Chinese; bookmark text can be in any language.
@@ -105,6 +105,7 @@ python3 scripts/check_public.py --artifacts
 
 - Tab grouping preserves pinned, incognito and already-grouped tabs. A group in another window is neither duplicated nor moved. Closed/saved groups are not discoverable through the ordinary tab-group API.
 - Folder matching is exact except for Grafana same-view URLs, explicitly configured app-entry scopes and same-account Gmail mailbox views. Ordinary region, account, query and fragment differences stay significant.
+- Results are ordered by open tabs, unopened bookmarks, search/address, then up to five history results. Relevance ranks within each category; history ties use most recent visits. Empty input and numeric searches keep their first-position action. Exact URL duplicates are merged while workspace-entry actions remain distinct.
 - Search results display one saved name matching the query. Other aliases remain searchable without being joined into the main title. Bookmark names and URLs are unchanged.
 - Grafana hosts beginning with `grafana` support `/d/<UID>/...` and `/v<number>/d/<UID>/...` slug redirects. Native reuse preserves scheme, host/port, namespace, case-sensitive UID, all query values and fragment. Query-key order and form encoding are normalized; only identical repeated `orgId`, `from`, and `to` values are collapsed. Repeated variable values retain order and multiplicity. Conflicting organizations disable relaxed matching. Bookmark URLs and explicit copy/new-tab actions stay unchanged. Equivalent views inherit Work/Personal only when their folder is unambiguous.
 - The native index is scoped to the extension's profile. The JXA fallback can see other normal Chrome windows, so use a single profile when relying on fallback tab discovery. New pages always use the configured profile directory.

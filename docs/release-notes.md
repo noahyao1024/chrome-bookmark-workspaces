@@ -1,10 +1,12 @@
-Bookmark Workspaces v0.1.3 fixes long search-result titles introduced by matching Grafana bookmark aliases to redirected tabs.
+Bookmark Workspaces v0.1.4 organizes search results by intent and shortens the history list.
 
-- Show the single saved name that best matches the query instead of joining all aliases into the main title.
-- Keep every alias searchable and preserve names that intentionally contain slashes.
-- Apply the same display rule to cached results and large-type previews.
-- Preserve Grafana tab reuse, relevance ranking, tab IDs, saved URLs and copy/new-tab actions.
+- Order results by open tabs, unopened bookmarks, search/address, then history. Open bookmarks belong to the tab category.
+- Rank relevance within each category; preserve archive demotion and recent-visit ordering for equally relevant history.
+- Show up to five history results after exact-URL merging and relevance ranking, retaining the existing 50-candidate history query.
+- Remove redundant address/history rows for the same full URL while preserving distinct workspace-entry actions.
+- Keep new-tab and numeric-search actions first, concise matching bookmark titles, live tab IDs and copy/new-tab modifiers.
+- Keep the search action available when no tabs or bookmarks match and when results reach the display limit.
 
-No bookmark names or browser pages are modified. No personal configuration or browsing data is included.
+Bookmark names, saved URLs, tab activation and grouping behavior are unchanged. No personal configuration or browsing data is included.
 
 macOS binaries are ad-hoc signed and are not Apple-notarized. If Gatekeeper blocks a downloaded executable, follow the README's source-build instructions.

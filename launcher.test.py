@@ -18,8 +18,8 @@ class LauncherTests(unittest.TestCase):
         self.payload = {'version': 1, 'url': self.url, 'tabId': '20', 'windowId': '10'}
         self.index.write_text(json.dumps({'items': [{
             'title': 'metrics row feed_api / metrics eu ent',
-            'match': 'metrics row feed_api metrics eu ent work duty service monitoring ' + self.url,
-            'subtitle': '已打开', 'arg': json.dumps(self.payload), 'valid': True,
+            'match': 'metrics row feed_api metrics eu ent work duty service monitoring ' + self.url.lower(),
+            'subtitle': '已打开', 'arg': json.dumps(self.payload), 'valid': True, '_source': 'opened-bookmark',
             'text': {'copy': self.url},
             'mods': {'ctrl': {'arg': self.url}, 'cmd': {'arg': json.dumps({**self.payload, 'forceNew': True})}}
         }]}))
@@ -50,11 +50,13 @@ class LauncherTests(unittest.TestCase):
         history = self.history([(other, 'metrics', 13400000000000000, 0)])
         rows = self.rows('metrics', history)
         self.assertEqual(json.loads(rows[0]['arg']), self.payload)
-        self.assertEqual(json.loads(rows[1]['arg'])['url'], other)
-        self.assertTrue(rows[1]['_history'])
-        self.assertTrue(rows[1]['subtitle'].startswith('历史 · '))
-        self.assertEqual(rows[1]['mods']['ctrl']['arg'], other)
-        self.assertTrue(json.loads(rows[1]['mods']['cmd']['arg'])['forceNew'])
+        self.assertEqual(json.loads(rows[2]['arg'])['url'], other)
+        self.assertTrue(rows[2]['_history'])
+        self.assertTrue(rows[2]['subtitle'].startswith('历史 · '))
+        self.assertEqual(rows[2]['mods']['ctrl']['arg'], other)
+        self.assertTrue(json.loads(rows[2]['mods']['cmd']['arg'])['forceNew'])
+
+        self.assertEqual(rows[1]['variables']['chrome_result_type'], 'search')
 
     def test_history_searches_chinese_and_literal_wildcards_safely(self):
         history = self.history([('https://history.test/a?x=1,2#p', "监控 100%_test O'Reilly", 13400000000000000, 0),
@@ -62,7 +64,7 @@ class LauncherTests(unittest.TestCase):
         for query in ["监控 100%_test", "O'Reilly"]:
             rows = self.rows(query, history)
             self.assertEqual(len(rows), 2)
-            self.assertEqual(json.loads(rows[0]['arg'])['url'], 'https://history.test/a?x=1,2#p')
+            self.assertEqual(json.loads(rows[1]['arg'])['url'], 'https://history.test/a?x=1,2#p')
 
     def test_history_omits_hidden_unsafe_and_empty_input_results(self):
         history = self.history([('https://history.test/hidden', 'hidden', 1, 1),
@@ -75,9 +77,10 @@ class LauncherTests(unittest.TestCase):
     def test_history_is_recent_first_and_capped_after_searching_all_rows(self):
         history = self.history([(f'https://history.test/{i}', 'report', i, 0) for i in range(80)])
         rows = self.rows('report', history)
-        self.assertEqual(len(rows), 11)
-        self.assertEqual(json.loads(rows[0]['arg'])['url'], 'https://history.test/79')
-        self.assertEqual(json.loads(rows[-2]['arg'])['url'], 'https://history.test/70')
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(rows[0]['variables']['chrome_result_type'], 'search')
+        self.assertEqual(json.loads(rows[1]['arg'])['url'], 'https://history.test/79')
+        self.assertEqual(json.loads(rows[-1]['arg'])['url'], 'https://history.test/75')
 
     def test_history_limit_applies_after_relevance_ranking_and_alias_merge(self):
         history = self.history([(f'https://history.test/{i}', 'report details', i, 0) for i in range(80)] +
@@ -86,15 +89,18 @@ class LauncherTests(unittest.TestCase):
         rows = self.rows('report', history)
         self.assertEqual(json.loads(rows[0]['arg']), self.payload)
         self.assertIn('metrics eu ent', rows[0]['title'])
-        self.assertEqual(json.loads(rows[1]['arg'])['url'], 'https://history.test/exact')
-        self.assertEqual(sum(bool(row.get('_history')) for row in rows), 10)
-        self.assertEqual(len(rows), 12)
+        self.assertEqual(rows[1]['variables']['chrome_result_type'], 'search')
+        self.assertEqual(json.loads(rows[2]['arg'])['url'], 'https://history.test/exact')
+        self.assertEqual(sum(bool(row.get('_history')) for row in rows), 5)
+        self.assertEqual(len(rows), 7)
 
     def test_missing_history_keeps_bookmarks_and_fallback_available(self):
         rows = self.rows('metrics', pathlib.Path(self.temp.name)/'missing')
         self.assertEqual(json.loads(rows[0]['arg']), self.payload)
         self.assertTrue(any(row.get('valid') is False for row in rows))
-        self.assertEqual(urllib.parse.parse_qs(urllib.parse.urlsplit(json.loads(rows[-1]['arg'])['url']).query)['q'], ['metrics'])
+        self.assertEqual(urllib.parse.parse_qs(urllib.parse.urlsplit(json.loads(rows[1]['arg'])['url']).query)['q'], ['metrics'])
+
+        self.assertFalse(rows[-1]['valid'])
 
     def test_snapshot_reads_locked_database_and_wal_without_changing_source(self):
         for wal in [False, True]:
@@ -162,8 +168,10 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)['q'], ['你好 C++ & why?'])
 
     def test_exact_urls_preserve_query_and_do_not_force_duplicate(self):
-        row = self.rows(self.url)[-1]
-        self.assertEqual(json.loads(row['arg']), {'version': 1, 'url': self.url})
+        rows = self.rows(self.url)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(json.loads(rows[0]['arg']), self.payload)
+        self.assertEqual(rows[0]['mods']['ctrl']['arg'], self.url)
 
     def test_bare_domains_and_local_development_urls(self):
         for query, url in [('example.com/a?x=1#test', 'https://example.com/a?x=1#test'),
@@ -197,7 +205,7 @@ class LauncherTests(unittest.TestCase):
         rows=self.rows('report',history)
         self.assertEqual(rows[0]['title'],'report current')
         self.assertEqual(rows[1]['title'],'report');self.assertTrue(rows[1]['subtitle'].startswith('归档'))
-        self.assertNotIn('_archived',rows[1]);self.assertEqual(sum(bool(r.get('_history')) for r in rows),10)
+        self.assertNotIn('_archived',rows[1]);self.assertEqual(sum(bool(r.get('_history')) for r in rows),5)
         self.assertEqual(self.rows('归档')[0]['title'],'report')
 
     def test_unsafe_scheme_is_not_executed(self):
@@ -250,6 +258,105 @@ class LauncherTests(unittest.TestCase):
         self.assertNotIn('match',rows[0])
         self.assertNotIn('_aliases',rows[0])
         self.assertEqual(json.loads(rows[0]['arg']),self.payload)
+
+    def test_type_order_precedes_relevance_and_keeps_short_titles_and_actions(self):
+        sources = [('bookmark', 'report', False), ('opened', 'Page title', False),
+                   ('opened-bookmark', 'report details', False), ('opened-related', 'report', False),
+                   ('bookmark', 'report', True), ('bookmark', 'report notes', False)]
+        items = []
+        for i, (source, title, archived) in enumerate(sources):
+            url = f'https://example.test/page/{i}'
+            payload = {'version': 1, 'url': url}
+            if source.startswith('opened'):
+                payload.update(tabId=str(i + 1), windowId='10')
+            items.append({'title': title, '_aliases': [title], '_source': source, '_archived': archived,
+                          'match': title.lower() + ' report work', 'valid': True,
+                          'arg': json.dumps(payload), 'text': {'copy': url},
+                          'mods': {'ctrl': {'arg': url}, 'cmd': {'arg': json.dumps({**payload, 'forceNew': True})}}})
+        items.append({'title': 'unrelated', 'match': 'unrelated', '_source': 'opened', 'valid': True})
+        self.index.write_text(json.dumps({'items': items}))
+        history = self.history([(f'https://history.test/{i}', 'report', i, 0) for i in range(9)])
+        rows = self.rows('report', history)
+        self.assertEqual([r['variables']['chrome_result_type'] for r in rows],
+                         ['opened-related', 'opened-bookmark', 'opened', 'bookmark', 'bookmark', 'bookmark', 'search'] + ['history'] * 5)
+        for row, original in zip(rows[:6], [items[i] for i in [3, 2, 1, 0, 5, 4]]):
+            self.assertEqual(row['title'], original['title'])
+            self.assertEqual(row['arg'], original['arg'])
+            self.assertEqual(row['mods'], original['mods'])
+        self.assertEqual([json.loads(row['arg'])['url'] for row in rows[-5:]],
+                         [f'https://history.test/{i}' for i in range(8, 3, -1)])
+
+    def test_exact_url_merging_keeps_open_bookmarks_above_search_and_history(self):
+        opened = 'https://example.test/report?region=one'
+        saved = 'https://example.test/report?region=two'
+        data = {'bookmarks': [{'title': 'report current', 'url': opened, 'path': 'Work'},
+                              {'title': 'report alias', 'url': opened, 'path': 'Work'},
+                              {'title': 'report saved', 'url': saved, 'path': 'Work'}],
+                'tabs': [{'title': 'Page title', 'url': opened, 'tabId': '20', 'windowId': '10'}]}
+        script = "const a=require('./alias-core.js');let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{const d=JSON.parse(s);console.log(JSON.stringify({items:a.items(d.bookmarks,d.tabs,'',true,{indexMode:true})}));});"
+        self.index.write_text(subprocess.check_output(['node', '-e', script], input=json.dumps(data), text=True, cwd=ROOT))
+        history = self.history([(opened, 'report old name', 100, 0), (saved, 'report old saved', 99, 0)] +
+                               [(f'https://history.test/{i}', 'report', i, 0) for i in range(9)])
+        rows = self.rows('report', history)
+        self.assertEqual([r['variables']['chrome_result_type'] for r in rows], ['opened-bookmark', 'bookmark', 'search'] + ['history'] * 5)
+        urls = [json.loads(r['arg'])['url'] for r in rows]
+        self.assertEqual(len(urls), len(set(urls)))
+        self.assertEqual(json.loads(rows[0]['arg']), {'version': 1, 'url': opened, 'tabId': '20', 'windowId': '10'})
+        self.assertEqual(json.loads(rows[1]['arg'])['url'], saved)
+        self.assertEqual(self.rows('report alias', history)[0]['title'], 'report alias')
+
+    def test_address_duplicate_is_removed_before_history_limit_but_entries_stay_distinct(self):
+        query = 'report'
+        search_url = json.loads(self.rows(query)[0]['arg'])['url']
+        self.index.write_text(json.dumps({'items': []}))
+        history = self.history([(search_url, 'report', 100, 0)] +
+                               [(f'https://history.test/{i}', 'report', i, 0) for i in range(9)])
+        rows = self.rows(query, history)
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(rows[0]['variables']['chrome_result_type'], 'search')
+        self.assertEqual(sum(r.get('_history', False) for r in rows), 5)
+        self.assertEqual(sum(json.loads(r['arg'])['url'] == search_url for r in rows), 1)
+
+        url = 'https://app.example.test/team/issues'
+        payload = {'version': 1, 'url': url, 'entryId': 'workspace', 'entryURL': url, 'tabId': '20', 'windowId': '10'}
+        self.index.write_text(json.dumps({'items': [{'title': 'Workspace', 'match': url, 'valid': True,
+            '_source': 'opened-related', '_entry': True, 'arg': json.dumps(payload), 'text': {'copy': url}}]}))
+        rows = self.rows(url)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(json.loads(rows[0]['arg']), payload)
+        self.assertNotIn('entryId', json.loads(rows[1]['arg']))
+
+    def test_numeric_and_empty_input_keep_their_first_action(self):
+        search_url = json.loads(self.rows('1+2')[0]['arg'])['url']
+        self.index.write_text(json.dumps({'items': [
+            {'title': '1+2', 'match': '1+2', 'valid': True, '_source': 'opened',
+             'arg': json.dumps({'version': 1, 'url': search_url, 'tabId': '20', 'windowId': '10'}), 'text': {'copy': search_url}},
+            {'title': '1+2 notes', 'match': '1+2 notes', 'valid': True, '_source': 'bookmark',
+             'arg': json.dumps({'version': 1, 'url': 'https://example.test/notes'})}
+        ]}))
+        rows = self.rows('1+2')
+        self.assertEqual([r['variables']['chrome_result_type'] for r in rows], ['search', 'bookmark'])
+        self.assertEqual(rows[0]['title'], '1+2')
+        new_tab = {'version': 1, 'url': 'chrome://newtab/', 'tabId': '30', 'windowId': '10'}
+        self.index.write_text(json.dumps({'items': [{'title': 'New tab', 'match': '', '_source': 'opened', 'valid': True,
+            'arg': json.dumps(new_tab), 'text': {'copy': new_tab['url']}}]}))
+        rows = self.rows('')
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(json.loads(rows[0]['arg'])['forceNew'])
+        self.assertEqual(json.loads(rows[1]['arg']), new_tab)
+
+    def test_address_stays_available_when_equal_bookmark_is_beyond_display_limit(self):
+        url = 'https://example.test/target'
+        self.index.write_text(json.dumps({'items': [
+            {'title': 'Saved page', 'match': url, 'valid': True, '_source': 'bookmark',
+             'arg': json.dumps({'version': 1, 'url': f'https://example.test/{i}'}),
+             'text': {'copy': f'https://example.test/{i}'}} for i in range(150)
+        ] + [{'title': 'Another page', 'match': url, 'valid': True, '_source': 'bookmark',
+              'arg': json.dumps({'version': 1, 'url': url}), 'text': {'copy': url}}]}))
+        rows = self.rows(url)
+        self.assertEqual(len(rows), 151)
+        self.assertEqual(rows[-1]['variables']['chrome_result_type'], 'url')
+        self.assertEqual(json.loads(rows[-1]['arg'])['url'], url)
 
     def test_historical_deep_link_title_keeps_the_exact_action_over_a_shared_entry(self):
         deep='https://app.example.test/team/issues/TASK-75'
