@@ -38,6 +38,8 @@ jobs:
           python-version: '3.12'
       - run: python3 build.py
       - run: python3 build_launcher.py --universal
+      - run: python3 tab-switcher/install.py --build-only --universal
+      - run: swiftc tab-switcher/SwitcherCore.swift tab-switcher/SwitcherCoreTests.swift -o .build/switcher-tests && .build/switcher-tests
       - run: python3 launcher.test.py
       - run: python3 native-launcher.test.py
       - run: python3 timing/wire_test.py

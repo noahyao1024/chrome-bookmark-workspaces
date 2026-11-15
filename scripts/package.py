@@ -53,7 +53,9 @@ def package(config=None,skip_build=False):
     value=read_config(config)
     if json.loads((ROOT/'package.json').read_text())['version'] != json.loads((ROOT/'bookmark-groups-extension/manifest.json').read_text())['version']:
         raise ValueError('Package and extension versions must match')
-    if not skip_build:subprocess.run([sys.executable,str(ROOT/'build_launcher.py'),'--universal'],check=True)
+    if not skip_build:
+        subprocess.run([sys.executable,str(ROOT/'build_launcher.py'),'--universal'],check=True)
+        subprocess.run([sys.executable,str(ROOT/'tab-switcher/install.py'),'--build-only','--universal'],check=True)
     output=ROOT/'dist';output.mkdir(exist_ok=True)
     runtime=output/'workflow';extension=output/'extension';bundle=output/'bookmark-workspaces-macos'
     for folder in [runtime,extension,bundle]:
@@ -80,6 +82,11 @@ def package(config=None,skip_build=False):
     for name in ['host.py','install.py']:shutil.copy2(ROOT/'native-bridge'/name,bundle/'native-bridge'/name)
     for name in ['README.md','README.zh-CN.md','LICENSE','THIRD_PARTY_NOTICES.md','SECURITY.md']:shutil.copy2(ROOT/name,bundle/name)
     (bundle/'timing').mkdir();shutil.copy2(ROOT/'timing/README.md',bundle/'timing/README.md')
+    shutil.copy2(ROOT/'timing/client.c',bundle/'timing/client.c')
+    (bundle/'tab-switcher').mkdir()
+    for path in (ROOT/'tab-switcher').iterdir():
+        if path.suffix in ('.swift','.py','.md') or path.name=='BookmarkWorkspacesSwitcher':
+            shutil.copy2(path,bundle/'tab-switcher'/path.name)
     shutil.copytree(ROOT/'third_party',bundle/'third_party')
     shutil.copy2(output/'Bookmark-Workspaces.alfredworkflow',bundle/'Bookmark-Workspaces.alfredworkflow')
     archive(bundle,output/'bookmark-workspaces-macos-universal.zip')

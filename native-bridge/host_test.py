@@ -139,4 +139,32 @@ class HostTests(unittest.TestCase):
             self.assertEqual(result['kind']=='opened',valid)
 
 
+    def test_preview_notifications_are_profile_scoped_and_contain_no_browsing_data(self):
+        session=Session(io.BytesIO());session.ready=True
+        with patch('host.notify_switcher') as notify:
+            session.receive({'type':'tabs_changed','profile':'Work'})
+            notify.assert_not_called()
+            session.receive({'type':'tabs_changed','profile':'Default'})
+            notify.assert_called_once_with()
+
+    def test_preview_snapshot_requires_matching_profile(self):
+        handler=object.__new__(Handler);handler.path='/tabs/recent';replies=[];calls=[]
+        handler.respond=lambda code,value:replies.append((code,value))
+        def request(payload,**kw):calls.append(kw);return {'kind':'recent_tabs','tabs':[]}
+        handler.server=SimpleNamespace(session=SimpleNamespace(focus=request))
+        handler.headers={'X-Chrome-Profile':'Work'};handler.do_GET();self.assertEqual(replies[-1][0],409);self.assertEqual(calls,[])
+        handler.headers={'X-Chrome-Profile':'Default'};handler.do_GET();self.assertEqual(replies[-1][0],200)
+        self.assertEqual(calls[0]['request_type'],'recent_tabs')
+
+    def test_preview_focus_requires_the_requested_id_and_never_uses_activate(self):
+        for actual,expected in [('10','focused'),('99','failed')]:
+            session=Session(io.BytesIO());session.ready=True;sent=[]
+            def send(obj):
+                sent.append(obj)
+                session.receive({'type':'result','id':obj['id'],'result':{'kind':'focused','tabId':actual,'matchType':'preview'}})
+            session.send=send
+            self.assertEqual(session.focus({'version':1,'tabId':10},request_type='recent_focus')['kind'],expected)
+            self.assertEqual(sent[0]['type'],'recent_focus')
+
+
 if __name__=='__main__':unittest.main()

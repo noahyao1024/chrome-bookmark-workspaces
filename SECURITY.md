@@ -27,3 +27,7 @@ Use the extension in one Chrome profile. Chrome does not expose a reliable profi
 ## Reporting issues
 
 Use the repository's private vulnerability-reporting feature when available. For ordinary bugs, open an issue with sanitized metadata. Do not attach browser databases, cookies, raw bookmark exports, personalized configuration, or unredacted URLs. There is no supported reason to publish credentials or browser data to reproduce a metadata/selection bug.
+
+## Optional tab-preview helper
+
+The separately installed native helper intercepts Control-Tab only while Chrome is frontmost. It uses Accessibility and Input Monitoring for the gesture and Screen Recording for screenshots of the visible Chrome window. It captures no audio. The helper verifies window geometry and the accessibility web-area URL, crops to webpage content, and retains at most 20 thumbnails in memory. It does not save or upload images, capture other applications, or activate background pages to generate previews. Tab metadata travels over the existing user-only native socket; wake-up notifications contain no browsing contents. Health output contains permission flags and counts only.

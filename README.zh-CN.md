@@ -54,6 +54,18 @@
 - `Archive`、`Archived` 下的书签排在现用书签之后，仍可输入 `archive` 或「归档」搜索。同名异址书签在副标题显示地区、方向或视图区别，名称保持原样。
 - 历史结果最多显示 5 条。最近标签往返命令可在 `chrome://extensions/shortcuts` 绑定 Chrome 允许的快捷键；Control-Tab 等保留组合可能无法绑定。
 
+## 可选：长按标签预览
+
+需要类似 Arc 的标签预览时，可另行安装原生小程序：
+
+```sh
+python3 tab-switcher/install.py --profile Default --request-permissions
+```
+
+为 **Bookmark Workspaces Switcher** 开启「辅助功能」「输入监控」「屏幕与系统音频录制」。这些权限与诊断程序独立；程序不录音。
+
+Chrome 前台短按 ⌃Tab 切回上一页；按住 ⌃ 显示缩略图，继续按 Tab 选择，⇧Tab 反向，松开 ⌃ 确认，Esc 取消。缩略图只从实际浏览过的页面采集，核对窗口和网页地址后裁取网页区域，最多在内存保留 20 张。不保存页面截图，也不会为了预览打开后台标签；未浏览或无法核验的页面显示标题占位。同一时间只启用一个标签预览小程序。详见 [预览说明](tab-switcher/README.md)。
+
 ## 从源码构建
 
 源码构建还需要 Xcode Command Line Tools。测试需要 Node.js 20 或更新版本，无须安装 npm 运行时依赖。

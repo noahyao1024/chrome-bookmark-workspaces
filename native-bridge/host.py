@@ -30,6 +30,17 @@ def configured_profile():
 PROFILE = configured_profile()
 
 
+def notify_switcher():
+    """Notify the optional UI without sending or logging browsing contents."""
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(0.01)
+            client.connect(str(SOCKET_DIR / 'tab-switcher.sock'))
+            client.sendall(b'{"type":"changed"}\n')
+    except OSError:
+        pass
+
+
 def send_timing(data):
     """Transient local IPC only: never persist URL/title data in timing logs."""
     path = SOCKET_DIR / 'timing.sock'
@@ -102,6 +113,10 @@ class Session:
             self.output.flush()
 
     def receive(self, obj):
+        if obj.get('type') == 'tabs_changed':
+            if self.ready and obj.get('profile') == PROFILE:
+                notify_switcher()
+            return
         if obj.get('type') == 'timing_event':
             if isinstance(obj.get('data'), dict):
                 send_timing(obj['data'])
@@ -156,7 +171,7 @@ class Session:
                 return {'kind': 'failed', 'reason': 'invalid_ack', 'allowFallback': False}
             if result.get('kind') == 'focused':
                 has_id = payload.get('tabId') is not None
-                expected = str(result.get('tabId')) == str(payload.get('tabId')) if has_id and request_type == 'focus' else (
+                expected = str(result.get('tabId')) == str(payload.get('tabId')) if has_id and request_type in ('focus', 'recent_focus') else (
                     str(result.get('tabId', '')).isdigit() and int(result['tabId']) > 0
                     and result.get('matchType') in ('id', 'resolved-url', 'gmail-mailbox', 'grafana-dashboard', 'entry-bound', 'entry-selected', 'entry-exact', 'entry-unique'))
                 if not expected:
@@ -219,6 +234,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             pass
 
     def do_GET(self):
+        if self.path == '/tabs/recent':
+            if self.headers.get('X-Chrome-Profile') != PROFILE:
+                self.respond(409, {'kind':'miss','reason':'profile_mismatch'})
+                return
+            result = self.server.session.focus({}, request_type='recent_tabs')
+            self.respond(200 if result.get('kind') == 'recent_tabs' else 503, result)
+            return
         if self.path == '/groups':
             result = self.server.session.focus({}, request_type='groups_state')
             self.respond(200 if result.get('kind') == 'groups_state' else 503, result)
@@ -270,7 +292,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except (ValueError, TypeError):
                 self.respond(400, {'kind': 'invalid'})
             return
-        if self.path not in ('/focus', '/activate'):
+        if self.path not in ('/focus', '/activate', '/tabs/focus'):
             self.respond(404, {})
             return
         started = time.perf_counter()
@@ -287,11 +309,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 raise ValueError('version')
             entry_request = payload.get('entryId') is not None
             expires_at = int(self.headers.get('X-Chrome-Expires', '0')) or None
-            request_type = 'activate' if self.path == '/activate' else 'focus'
+            request_type = 'recent_focus' if self.path == '/tabs/focus' else 'activate' if self.path == '/activate' else 'focus'
             operation = self.headers.get('X-Chrome-Timing-Operation', '')
             if not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', operation):
                 operation = None
-            if request_type == 'activate' and (self.server.session.version < 2 or self.headers.get('X-Chrome-Profile') != PROFILE):
+            if request_type in ('activate','recent_focus') and (self.server.session.version < 2 or self.headers.get('X-Chrome-Profile') != PROFILE):
                 result = {'kind': 'miss', 'reason': 'unsupported_profile_or_version', 'allowFallback': True}
             else:
                 result = self.server.session.focus(payload, expires_at=expires_at, request_type=request_type, timing_operation=operation)

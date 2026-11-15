@@ -42,6 +42,16 @@ The prebuilt release targets Chrome's `Default` profile directory. For another d
 
 Grant Alfred Full Disk Access if Chrome history or fallback bookmark reads fail. Grant Alfred Automation access to Chrome if the fallback reports that it cannot control Chrome. Basic search does not need Screen Recording or Input Monitoring. There is no need to enable JavaScript from Apple Events in Chrome.
 
+## Optional tab previews
+
+For hold-and-release switching, install the [native Control-Tab helper](tab-switcher/README.md):
+
+```sh
+python3 tab-switcher/install.py --profile Default --request-permissions
+```
+
+Tap Control-Tab to return to the previous tab. Hold Control to show page thumbnails, press Tab to advance or Shift-Tab to reverse, and release Control to confirm. Escape cancels. Thumbnails are captured only from pages actually viewed, verified against the focused window and current page, cropped to webpage content, and kept in memory. Unvisited or unverifiable pages use title placeholders. The helper requires Accessibility, Input Monitoring and Screen Recording; it captures no audio. Use only one preview helper at a time, including when migrating from an older local installation.
+
 ## Configure app-entry reuse
 
 The public default contains no site-specific rules. Copy `config.example.json` to `config.local.json`, which Git ignores. For example:
@@ -109,7 +119,7 @@ python3 scripts/check_public.py --artifacts
 - Search results display one saved name matching the query. Other aliases remain searchable without being joined into the main title. Bookmark names and URLs are unchanged.
 - Grafana hosts beginning with `grafana` support `/d/<UID>/...` and `/v<number>/d/<UID>/...` slug redirects. Native reuse preserves scheme, host/port, namespace, case-sensitive UID, all query values and fragment. Query-key order and form encoding are normalized; only identical repeated `orgId`, `from`, and `to` values are collapsed. Repeated variable values retain order and multiplicity. Conflicting organizations disable relaxed matching. Bookmark URLs and explicit copy/new-tab actions stay unchanged. Equivalent views inherit Work/Personal only when their folder is unambiguous.
 - The native index is scoped to the extension's profile. The JXA fallback can see other normal Chrome windows, so use a single profile when relying on fallback tab discovery. New pages always use the configured profile directory.
-- Recent-tab switching is a two-tab toggle, not a hold-and-release tab switcher. Chrome may reject reserved shortcuts such as Control-Tab.
+- The extension command toggles the last two tabs. The optional [native preview helper](tab-switcher/README.md) adds Control-Tab hold/release previews in the focused Chrome window. It requires separate macOS permissions and is not installed by default.
 - Archive detection uses folders named `Archive` or `Archived`. Type `archive` or `归档` to find their contents explicitly.
 - No remote sync backend or telemetry service is included. Chrome's own bookmark sync remains responsible for synchronization.
 

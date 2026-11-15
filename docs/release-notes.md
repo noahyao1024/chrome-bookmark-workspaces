@@ -1,12 +1,11 @@
-Bookmark Workspaces v0.1.4 organizes search results by intent and shortens the history list.
+Bookmark Workspaces v0.2.0 adds an optional native Control-Tab preview switcher for macOS.
 
-- Order results by open tabs, unopened bookmarks, search/address, then history. Open bookmarks belong to the tab category.
-- Rank relevance within each category; preserve archive demotion and recent-visit ordering for equally relevant history.
-- Show up to five history results after exact-URL merging and relevance ranking, retaining the existing 50-candidate history query.
-- Remove redundant address/history rows for the same full URL while preserving distinct workspace-entry actions.
-- Keep new-tab and numeric-search actions first, concise matching bookmark titles, live tab IDs and copy/new-tab modifiers.
-- Keep the search action available when no tabs or bookmarks match and when results reach the display limit.
+- Tap Control-Tab to return to the previous tab; hold Control to preview recent tabs, cycle with Tab/Shift-Tab, release to confirm, or Escape to cancel.
+- Show up to five preview cards at once while cycling the current window's MRU order. The order stays frozen during the gesture.
+- Capture only actually viewed pages, verify the focused window and current webpage, and crop out browser toolbars. Keep at most 20 thumbnails in memory; unvisited or unverifiable pages use title placeholders.
+- Select existing tabs only, rechecking tab ID, URL, focused window and the original active tab. No new tabs or cross-window moves are performed.
+- Keep the existing Alfred search order, history cap, bookmark names, grouping and recent-tab extension command.
 
-Bookmark names, saved URLs, tab activation and grouping behavior are unchanged. No personal configuration or browsing data is included.
+The helper is optional and must be installed separately. It needs Accessibility, Input Monitoring and Screen Recording permissions, independent of the diagnostics app. It captures no audio and saves no page screenshots. The macOS bundle includes an Apple Silicon/Intel helper executable and source installer.
 
-macOS binaries are ad-hoc signed and are not Apple-notarized. If Gatekeeper blocks a downloaded executable, follow the README's source-build instructions.
+No personal configuration, bookmark data or runtime images are included. macOS binaries are ad-hoc signed and are not Apple-notarized; source-build instructions remain available in the README.

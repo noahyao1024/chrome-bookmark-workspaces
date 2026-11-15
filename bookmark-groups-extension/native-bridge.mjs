@@ -5,6 +5,7 @@ import {createTimingObserver} from './timing-observer.mjs';
 import {createSearchIndex} from './search-index.mjs';
 import {activate} from './native-activate.mjs';
 import {groupingState, scan as organizeGroups} from './grouping-runtime.mjs';
+import {recentTabs, focusPreview} from './tab-preview.mjs';
 
 const entries = createEntryReuse(chrome, entryConfig.entries);
 chrome.tabs.onCreated.addListener(tab => { entries.observeTab(tab, true).catch(console.warn); });
@@ -18,6 +19,18 @@ entries.ready.then(async () => {
 }).catch(console.warn);
 
 let port, reconnectTimer, reconnectDelay = 250;
+let previewTimer;
+function notifyPreview() {
+  if (previewTimer) return;
+  previewTimer=setTimeout(() => {
+    previewTimer=undefined;
+    try {port?.postMessage({type:'tabs_changed',profile:entryConfig.profile});} catch {}
+  },80);
+}
+chrome.tabs.onActivated.addListener(notifyPreview);
+chrome.tabs.onRemoved.addListener(notifyPreview);
+chrome.tabs.onUpdated.addListener((id,change) => {if(change.url || change.status==='complete')notifyPreview();});
+chrome.windows.onFocusChanged.addListener(notifyPreview);
 const searchIndex = createSearchIndex(chrome, entries, entryConfig, index => {
   if (port) {try {port.postMessage({type: 'search_index', index});} catch { /* Rebuilt on reconnect. */ }}
 });
@@ -37,6 +50,12 @@ function connect() {
   catch { retry(); return; }
   const active = port;
   active.onMessage.addListener(message => {
+    if (message.type === 'recent_tabs') {
+      recentTabs(chrome).catch(() => ({kind:'miss',reason:'unavailable'})).then(result => {
+        if (active===port) {try {active.postMessage({type:'result',id:message.id,result});} catch {}}
+      });
+      return;
+    }
     if (message.type === 'groups_state' || message.type === 'organize_groups') {
       (async () => {
         if (message.type === 'organize_groups') {
@@ -75,7 +94,7 @@ function connect() {
         });
       return;
     }
-    if (!['focus', 'activate'].includes(message.type)) return;
+    if (!['focus', 'activate', 'recent_focus'].includes(message.type)) return;
     const progress = stage => {
       if (active === port) {
         try { active.postMessage({type: 'progress', id: message.id, stage}); } catch { /* Final response reports failure. */ }
@@ -86,7 +105,7 @@ function connect() {
     sequence = sequence.catch(() => {}).then(async () => {
       const operation = message.timingOperation;
       if (message.type === 'activate' && operation) timing.arm({operation, url: message.payload.url, expiresAt: Date.now() + 15000});
-      const result = await (message.type === 'activate' ? activate : focusExisting)(chrome, message.payload, {
+      const result = await (message.type === 'recent_focus' ? focusPreview : message.type === 'activate' ? activate : focusExisting)(chrome, message.payload, {
         expiresAt: message.expiresAt,
         cancelled: () => cancelled.has(message.id) || active !== port,
         progress, entries,
@@ -111,6 +130,7 @@ function connect() {
   });
   try { active.postMessage({type: 'ready', version: 2, profile: entryConfig.profile}); }
   catch { if (active === port) port = undefined;active.disconnect();retry(); }
+  notifyPreview();
 }
 function retry() {
   if (reconnectTimer) return;

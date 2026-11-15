@@ -19,3 +19,5 @@ timing-send
 timing/BookmarkWorkspacesDiagnostics
 timing/TimingCoreTests
 timing/PixelProbeTests
+tab-switcher/BookmarkWorkspacesSwitcher
+tab-switcher/.BookmarkWorkspacesSwitcher.next
